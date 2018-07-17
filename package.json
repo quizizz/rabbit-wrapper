@@ -1,6 +1,6 @@
 {
   "name": "@akshendra/rabbit",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A simple wrapper for rabbitmq with rpc support",
   "main": "src/index.js",
   "scripts": {
@@ -22,16 +22,12 @@
   },
   "homepage": "https://github.com/akshendra/rabbit-wrapper#readme",
   "devDependencies": {
-    "eslint": "^4.18.2",
-    "eslint-plugin-import": "^2.9.0",
     "hold-it": "^1.0.1"
   },
   "dependencies": {
-    "@akshendra/misc": "github:akshendra/utils",
-    "@akshendra/service": "github:akshendra/service-base",
-    "@akshendra/validator": "github:akshendra/validator",
-    "amqp-connection-manager": "^1.3.7",
-    "amqplib": "^0.5.2",
-    "uuid": "^3.2.1"
+    "amqp-connection-manager": "2.0.0",
+    "amqplib": "0.5.2",
+    "safely-parse-json": "0.1.0",
+    "uuid": "3.2.1"
   }
 }

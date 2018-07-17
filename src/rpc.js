@@ -1,31 +1,47 @@
 
 const uuid = require('uuid/v4');
 
-const { is } = require('@akshendra/misc');
-const Service = require('@akshendra/service');
-const { validate, joi } = require('@akshendra/validator');
-
 /**
  * @class RRPC
  */
-class RRPC extends Service {
+class RRPC {
   /**
    * @param {string} name - unique name to this service
    * @param {EventEmitter} emitter
    * @param {Object} config - configuration object of service
    */
   constructor(name, emitter, config, rabbit) {
-    super(name, emitter, config);
+    this.name = name;
+    this.emitter = emitter;
 
-    this.config = validate(config, joi.object().keys({
-      request: joi.string().required(),
-      reply: joi.string().required(),
-    }));
+    this.config = config;
 
     this.rabbit = rabbit;
     this.requestQ = null;
     this.replyQ = null;
     this.callbacks = {};
+  }
+
+  log(message, data) {
+    this.emitter.emit('log', {
+      service: this.name,
+      message,
+      data,
+    });
+  }
+
+  success(message, data) {
+    this.emitter.emit('success', {
+      service: this.name, message, data,
+    });
+  }
+
+  error(err, data) {
+    this.emitter.emit('error', {
+      service: this.name,
+      data,
+      err,
+    });
   }
 
 
@@ -85,7 +101,7 @@ class RRPC extends Service {
       const correlationId = msg.correlationId;
       // get the callback
       const cb = this.callbacks[correlationId];
-      if (is.not.existy(cb)) {
+      if (!cb) {
         const error = new Error(`Callback not present for ${correlationId}`);
         this.log.error(error);
         this.emitError('wait', error, {

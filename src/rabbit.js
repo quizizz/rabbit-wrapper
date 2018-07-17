@@ -1,39 +1,55 @@
 
 const amqp = require('amqp-connection-manager');
-
-const Service = require('@akshendra/service');
-const { safeJSON } = require('@akshendra/misc');
-const { validate, joi } = require('@akshendra/validator');
+const safeJSON = require('safely-parse-json');
 
 /**
  * @class Rabbit
  */
-class Rabbit extends Service {
+class Rabbit {
   /**
    * @param {string} name - unique name to this service
    * @param {EventEmitter} emitter
    * @param {Object} config - configuration object of service
    */
   constructor(name, emitter, config) {
-    super(name, emitter, config);
+    this.name = name;
+    this.emitter = emitter;
 
-    this.config = validate(config, joi.object().keys({
-      hosts: joi.array().items(joi.string()).default(['127.0.0.1']),
-      port: joi.number().integer().min(0).default(5672),
-      user: joi.string().required(),
-      password: joi.string().required(),
-      opts: joi.object().keys({
-        heartbeatIntervalInSeconds: joi.number().integer().default(5),
-        reconnectTimeInSeconds: joi.number().integer().default(2),
-      }).default({
+    this.config = Object.assign({
+      hosts: ['localhost'],
+      port: 5672,
+    }, config, {
+      opts: Object.assign({
         heartbeatIntervalInSeconds: 5,
         reconnectTimeInSeconds: 2,
-      }),
-    }));
+      }, config.opts),
+    });
 
     this.queues = {}; // Queue name to queue channel map
     this.client = null;
     this.channel = null; // A global helping channel
+  }
+
+  log(message, data) {
+    this.emitter.emit('log', {
+      service: this.name,
+      message,
+      data,
+    });
+  }
+
+  success(message, data) {
+    this.emitter.emit('success', {
+      service: this.name, message, data,
+    });
+  }
+
+  error(err, data) {
+    this.emitter.emit('error', {
+      service: this.name,
+      data,
+      err,
+    });
   }
 
   /**
@@ -56,17 +72,17 @@ class Rabbit extends Service {
       opts,
     };
     return new Promise((resolve, reject) => {
-      this.log.info('Connecting to', urls);
+      this.log('Connecting to', {
+        urls,
+      });
       const connection = amqp.connect(urls, opts);
       connection.on('connect', data => {
         const message = `Connected to ${data.url}`;
-        this.log.info(message);
-        this.emitInfo('connected', message, info);
+        this.success(message, info);
         resolve(connection);
       });
       connection.on('disconnect', params => {
-        this.log.error('disconnect', params.err.stack);
-        this.emitError('disconnected', params.err, urls);
+        this.error(params.err, urls);
         reject(params.err);
       });
     });
@@ -82,28 +98,24 @@ class Rabbit extends Service {
    * @return {Promise<channel, Error>} resolves with the channel created
    */
   makeChannel(op) {
-    const opts = validate(op, joi.object().keys({
-      name: joi.string().required(),
-      json: joi.bool().default(true),
-      setup: joi.func(),
-    }));
+    const opts = Object.assign({
+      json: true,
+    }, op);
 
     return new Promise((resolve, reject) => {
       const channel = this.client.createChannel(opts);
       const channelName = opts.name;
       channel.on('close', err => {
-        this.log.error(`<${channelName}> channel :: closed`, err);
         if (err) {
-          this.emitError('channel closed', err, {
+          this.error(err, {
             channelName,
           });
         }
         reject(err);
       });
       channel.on('error', err => {
-        this.log.error(`<${channelName}> channel :: error`, err);
         if (err) {
-          this.emitError('channel error', err, {
+          this.error(err, {
             channelName,
           });
         }
@@ -111,16 +123,14 @@ class Rabbit extends Service {
       });
       channel.on('drop', message => {
         const error = new Error(`${channelName} channel :: dropped message`);
-        this.log.error(error);
-        this.emitError('message dropped', error, {
+        this.error(error, {
           channelName,
           droppedMessage: message,
         });
       });
       channel.on('connect', () => {
         const message = `<${channelName}> channel :: opened`;
-        this.log.info(message);
-        this.emitInfo('channel opened', message, {
+        this.log(message, {
           channelName,
         });
         resolve(channel);
@@ -162,10 +172,10 @@ class Rabbit extends Service {
   * @return {Promise<undefined>}
   */
   createQueue(queueName, op) {
-    const opts = validate(op, joi.object().keys({
-      durable: joi.bool().default(true),
-      autoDelete: joi.bool().default(false),
-    }));
+    const opts = Object.assign({
+      durable: true,
+      autoDelete: false,
+    }, op);
     this.queues[queueName] = {};
     const self = this;
     return this.makeChannel({
@@ -177,8 +187,7 @@ class Rabbit extends Service {
         return ch.assertQueue(queueName, opts).then(q => {
           const message = `"${queueName}" -> created ->` +
               ` ${q.consumerCount} consumers & ${q.messageCount} messages`;
-          self.log.info(message);
-          self.emitInfo('queue created', message, {
+          self.log(message, {
             queueName,
             consumerCount: q.consumerCount,
             messageCount: q.messageCount,
@@ -202,7 +211,7 @@ class Rabbit extends Service {
   subscribe(qid, cb) {
     const q = this.queues[qid];
     return q.channel.addSetup(ch => {
-      this.log.info('Subscribin to', qid);
+      this.log(`Subscribin to ${qid}`);
       return ch.consume(qid, msg => {
         const message = {
           content: safeJSON(msg.content.toString()),
@@ -254,11 +263,9 @@ class Rabbit extends Service {
     }
     return p
       .then(() => {
-        this.log.info('Successfully published on', qid);
       })
       .catch((err) => {
-        this.log.error(err);
-        this.emitError('publishing', err, {
+        this.error(err, {
           queueName: qid,
           message,
           options,
@@ -285,10 +292,8 @@ class Rabbit extends Service {
     }
 
     return p.then(() => {
-      this.log.info('Successfully published on', qname);
     }).catch(err => {
-      this.log.error(err);
-      this.emitError('sending', err, {
+      this.error(err, {
         queueName: qname,
         message,
         options,
@@ -308,7 +313,7 @@ class Rabbit extends Service {
       if (message === false) {
         throw new Error(`No message on ${qname}`);
       }
-      return JSON.parse(message.content.toString());
+      return safeJSON(message.content.toString());
     });
   }
 }
