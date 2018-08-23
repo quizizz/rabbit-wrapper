@@ -56,7 +56,7 @@ class RRPC {
     return Promise.all([
       this.rabbit.createQueue(request),
       this.rabbit.createQueue(reply, {
-        autoDelete: true,
+        autoDelete: false,
       }),
     ]).then(([requestQ, replyQ]) => {
       this.requestQ = requestQ;
@@ -107,6 +107,7 @@ class RRPC {
         this.emitError('wait', error, {
           correlationId,
         });
+        return true;
       }
       // call the callback
       cb(msg.content);
