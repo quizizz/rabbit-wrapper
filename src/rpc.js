@@ -103,8 +103,7 @@ class RRPC {
       const cb = this.callbacks[correlationId];
       if (!cb) {
         const error = new Error(`Callback not present for ${correlationId}`);
-        this.log.error(error);
-        this.emitError('wait', error, {
+        this.error(error, {
           correlationId,
         });
         return true;
