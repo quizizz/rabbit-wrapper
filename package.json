@@ -1,6 +1,6 @@
 {
   "name": "@akshendra/rabbit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A simple wrapper for rabbitmq with rpc support",
   "main": "src/index.js",
   "scripts": {

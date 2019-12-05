@@ -50,13 +50,13 @@ class RRPC {
    *
    * @return {Promise<this>}
    */
-  init() {
+  init(options = {}) {
     const { request, reply } = this.config;
 
     return Promise.all([
       this.rabbit.createQueue(request),
       this.rabbit.createQueue(reply, {
-        autoDelete: false,
+        autoDelete: options.autoDeleteReplyQueue || false,
       }),
     ]).then(([requestQ, replyQ]) => {
       this.requestQ = requestQ;
