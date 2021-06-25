@@ -2,8 +2,9 @@
   "name": "@akshendra/rabbit",
   "version": "0.1.0",
   "description": "A simple wrapper for rabbitmq with rpc support",
-  "main": "src/index.js",
+  "main": "lib/index.js",
   "scripts": {
+    "compile": "npx tsc",
     "test": "mocha --no-timeouts --bail test/*.spec.js"
   },
   "repository": {
@@ -22,12 +23,14 @@
   },
   "homepage": "https://github.com/akshendra/rabbit-wrapper#readme",
   "devDependencies": {
+    "@types/amqp-connection-manager": "^2.0.11",
     "hold-it": "^1.0.1"
   },
   "dependencies": {
-    "amqp-connection-manager": "2.0.0",
-    "amqplib": "0.5.2",
+    "@types/uuid": "^8.3.0",
+    "amqp-connection-manager": "3.2.2",
+    "amqplib": "0.8.0",
     "safely-parse-json": "0.1.0",
-    "uuid": "3.2.1"
+    "uuid": "8.3.2"
   }
 }

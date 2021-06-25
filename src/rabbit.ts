@@ -1,36 +1,65 @@
 
-const amqp = require('amqp-connection-manager');
-const safeJSON = require('safely-parse-json');
+import amqp, { AmqpConnectionManager, ChannelWrapper, CreateChannelOpts } from 'amqp-connection-manager';
+import safeJSON from 'safely-parse-json';
+import EventEmitter from 'events';
+import { Channel, ConfirmChannel, Options } from 'amqplib';
+
+interface RabbitConfig {
+  hosts?: string[];
+  port?: number;
+  user: string;
+  password: string;
+  opts?: {
+    heartbeatIntervalInSeconds?: number;
+    reconnectTimeInSeconds?: number;
+  }
+}
+
+interface SubscribeCallbackArgs {
+  content: any;
+  replyTo: any;
+  rKey: string;
+  correlationId: any;
+  ack: () => void;
+  nack: () => void;
+}
 
 /**
  * @class Rabbit
  */
 class Rabbit {
+  name: string;
+  emitter: EventEmitter;
+  config: RabbitConfig;
+  queues: {[_:string]: { channel?: ChannelWrapper }};
+  client: AmqpConnectionManager;
+  channel: ChannelWrapper;
   /**
    * @param {string} name - unique name to this service
    * @param {EventEmitter} emitter
    * @param {Object} config - configuration object of service
    */
-  constructor(name, emitter, config) {
+  constructor(name: string, emitter: EventEmitter, config: RabbitConfig) {
     this.name = name;
     this.emitter = emitter;
 
-    this.config = Object.assign({
+    this.config = {
       hosts: ['localhost'],
       port: 5672,
-    }, config, {
-      opts: Object.assign({
+      ...config,
+      opts: {
         heartbeatIntervalInSeconds: 5,
         reconnectTimeInSeconds: 2,
-      }, config.opts),
-    });
+        ...(config || {}).opts,
+      },
+    };
 
     this.queues = {}; // Queue name to queue channel map
     this.client = null;
     this.channel = null; // A global helping channel
   }
 
-  log(message, data) {
+  log(message: string, data?: any) {
     this.emitter.emit('log', {
       service: this.name,
       message,
@@ -38,13 +67,13 @@ class Rabbit {
     });
   }
 
-  success(message, data) {
+  success(message: string, data?: any) {
     this.emitter.emit('success', {
       service: this.name, message, data,
     });
   }
 
-  error(err, data) {
+  error(err: Error, data?: any) {
     this.emitter.emit('error', {
       service: this.name,
       data,
@@ -57,7 +86,7 @@ class Rabbit {
    *
    * @return {Promise<connection, Error>} resolves with the connection object
    */
-  makeConnection() {
+  makeConnection(): Promise<AmqpConnectionManager> {
     const { config } = this;
     const urls = config.hosts.map(host => ('amqp://' +
       `${config.user}:` +
@@ -97,10 +126,11 @@ class Rabbit {
    *
    * @return {Promise<channel, Error>} resolves with the channel created
    */
-  makeChannel(op) {
-    const opts = Object.assign({
+  makeChannel(op: CreateChannelOpts): Promise<ChannelWrapper> {
+    const opts: CreateChannelOpts = {
       json: true,
-    }, op);
+      ...op,
+    };
 
     return new Promise((resolve, reject) => {
       const channel = this.client.createChannel(opts);
@@ -171,17 +201,18 @@ class Rabbit {
   *
   * @return {Promise<undefined>}
   */
-  createQueue(queueName, op) {
-    const opts = Object.assign({
+  async createQueue(queueName: string, op?: Options.AssertQueue) {
+    const opts = {
       durable: true,
       autoDelete: false,
-    }, op);
+      ...op,
+    };
     this.queues[queueName] = {};
     const self = this;
-    return this.makeChannel({
+    const channel = await this.makeChannel({
       name: queueName,
       json: true,
-      setup: function setup(ch) {
+      setup: function setup(ch: ConfirmChannel) {
         ch.prefetch(1);
         // Create a queue
         return ch.assertQueue(queueName, opts).then(q => {
@@ -195,10 +226,12 @@ class Rabbit {
           return this;
         });
       },
-    }).then(channel => {
-      this.queues[queueName].channel = channel;
-    });
+    })
+
+    this.queues[queueName].channel = channel;
+    return channel;
   }
+
 
   /**
   * Subscribe to a queue, queue should be created in this instance only
@@ -208,9 +241,9 @@ class Rabbit {
   *
   * @return {Promise}
   */
-  subscribe(qid, cb) {
+  subscribe(qid: string, cb: (args: SubscribeCallbackArgs) => void) {
     const q = this.queues[qid];
-    return q.channel.addSetup(ch => {
+    return q.channel.addSetup((ch: ConfirmChannel) => {
       this.log(`Subscribin to ${qid}`);
       return ch.consume(qid, msg => {
         const message = {
@@ -238,9 +271,11 @@ class Rabbit {
    *
    * @return {Promise}
    */
-  unsubscribe(qName, tag) {
+  async unsubscribe(qName: string, tag: string): Promise<void> {
     const q = this.queues[qName];
-    return q.channel._channel.cancel(tag);
+    // @ts-ignore
+    const channel: Channel = q.channel._channel as Channel;
+    await channel.cancel(tag);
   }
 
   /**
@@ -255,16 +290,13 @@ class Rabbit {
   *
   * @return {Promise}
   */
-  publish(qid, message, options, handle = true) {
+  async publish(qid: string, message: Record<string, unknown>, options: Options.Publish, handle = true) {
     const q = this.queues[qid];
     const p = q.channel.sendToQueue(qid, message, options);
     if (handle === false) {
       return p;
     }
-    return p
-      .then(() => {
-      })
-      .catch((err) => {
+    await p.catch((err) => {
         this.error(err, {
           queueName: qid,
           message,
@@ -285,7 +317,7 @@ class Rabbit {
   *
   * @return {Promise}
   */
-  send(qname, message, options, handle = true) {
+  send(qname: string, message: Record<string, unknown>, options: Options.Publish, handle = true) {
     const p = this.channel.sendToQueue(qname, message, options);
     if (handle === false) {
       return p;
@@ -308,14 +340,15 @@ class Rabbit {
   *
   * @return {Promise} - resolve with mesasge message
   */
-  getMessage(qname) {
-    return this.channel._channel.get(qname, { noAck: true }).then(message => {
-      if (message === false) {
-        throw new Error(`No message on ${qname}`);
-      }
-      return safeJSON(message.content.toString());
-    });
+  async getMessage<T>(qname: string): Promise<T> {
+    // @ts-ignore
+    const channel: Channel = this.channel._channel;
+    const message = await channel.get(qname, { noAck: true })
+    if (message === false) {
+      throw new Error(`No message on ${qname}`);
+    }
+    return safeJSON(message.content.toString());
   }
 }
 
-module.exports = Rabbit;
+export = Rabbit;

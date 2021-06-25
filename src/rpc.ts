@@ -1,28 +1,42 @@
 
-const uuid = require('uuid/v4');
+import { v4 as uuid } from 'uuid';
+import events from 'events';
+import Rabbit from './rabbit';
+import { ChannelWrapper } from 'amqp-connection-manager';
+
+
+interface RPCConfig {
+  request: string;
+  reply: string;
+}
 
 /**
  * @class RRPC
  */
-class RRPC {
+class RPC {
+  name: string;
+  emitter: events.EventEmitter;
+  config: RPCConfig;
+  rabbit: Rabbit;
+  requestQ: ChannelWrapper;
+  replyQ: ChannelWrapper;
+  callbacks: {[_: string]: (value: unknown) => any };
   /**
    * @param {string} name - unique name to this service
    * @param {EventEmitter} emitter
    * @param {Object} config - configuration object of service
    */
-  constructor(name, emitter, config, rabbit) {
+  constructor(name, emitter, config, rabbit: Rabbit) {
     this.name = name;
     this.emitter = emitter;
-
     this.config = config;
-
     this.rabbit = rabbit;
     this.requestQ = null;
     this.replyQ = null;
     this.callbacks = {};
   }
 
-  log(message, data) {
+  log(message: string, data?: Record<string, unknown>) {
     this.emitter.emit('log', {
       service: this.name,
       message,
@@ -30,13 +44,13 @@ class RRPC {
     });
   }
 
-  success(message, data) {
+  success(message: string, data?: Record<string, unknown>) {
     this.emitter.emit('success', {
       service: this.name, message, data,
     });
   }
 
-  error(err, data) {
+  error(err: Error, data?: Record<string, unknown>) {
     this.emitter.emit('error', {
       service: this.name,
       data,
@@ -50,21 +64,18 @@ class RRPC {
    *
    * @return {Promise<this>}
    */
-  init() {
+  async init() {
     const { request, reply } = this.config;
-
-    return Promise.all([
+    const [requestQ, replyQ] = await Promise.all([
       this.rabbit.createQueue(request),
       this.rabbit.createQueue(reply, {
         autoDelete: false,
       }),
-    ]).then(([requestQ, replyQ]) => {
-      this.requestQ = requestQ;
-      this.replyQ = replyQ;
-
-      // subscribe to this queue
-      return this.subscribe(reply);
-    });
+    ]);
+    this.requestQ = requestQ;
+    this.replyQ = replyQ;
+    // subscribe to this queue
+    return this.subscribe(reply);
   }
 
 
@@ -76,11 +87,11 @@ class RRPC {
    *
    * @param {Promise}
    */
-  request(message) {
+  request(message: Record<string, unknown>) {
     return new Promise((resolve) => { // eslint-disable-line
       const { request, reply } = this.config;
       const correlationId = uuid();
-      // register you callback
+      // register your callback
       this.callbacks[correlationId] = resolve;
       this.rabbit.publish(request, message, {
         correlationId,
@@ -95,7 +106,7 @@ class RRPC {
    *
    * @param {string} qname
    */
-  subscribe(qname) {
+  subscribe(qname: string) {
     return this.rabbit.subscribe(qname, (msg) => {
       msg.ack();
       const correlationId = msg.correlationId;
@@ -116,4 +127,4 @@ class RRPC {
   }
 }
 
-module.exports = RRPC;
+export = RPC;
