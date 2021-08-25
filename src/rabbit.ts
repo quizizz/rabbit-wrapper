@@ -1,7 +1,7 @@
 
 import amqp, { AmqpConnectionManager, ChannelWrapper, CreateChannelOpts } from 'amqp-connection-manager';
 import safeJSON from 'safely-parse-json';
-import EventEmitter from 'events';
+import { EventEmitter } from 'events';
 import { Channel, ConfirmChannel, Options } from 'amqplib';
 
 interface RabbitConfig {

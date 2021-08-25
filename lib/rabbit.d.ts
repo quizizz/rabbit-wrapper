@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import amqp, { AmqpConnectionManager, ChannelWrapper, CreateChannelOpts } from 'amqp-connection-manager';
-import EventEmitter from 'events';
+import { EventEmitter } from 'events';
 import { Options } from 'amqplib';
 interface RabbitConfig {
     hosts?: string[];
