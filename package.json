@@ -27,6 +27,7 @@
     "hold-it": "^1.0.1"
   },
   "dependencies": {
+    "@types/node": "^16.7.1",
     "@types/uuid": "^8.3.0",
     "amqp-connection-manager": "3.2.2",
     "amqplib": "0.8.0",
