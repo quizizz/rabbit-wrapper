@@ -17,8 +17,7 @@ interface SubscribeCallbackArgs {
     replyTo: any;
     rKey: string;
     correlationId: any;
-    traceId: any;
-    reqStartTime: any;
+    meta: any;
     ack: () => void;
     nack: () => void;
 }
@@ -117,14 +116,14 @@ declare class Rabbit {
     * @param {Object} options - the name of the reply queue, correlationId
     * @param {string} options.replyTo - the name of reply queue
     * @param {string} options.correlationId
-    * @param {Object} extra - extra message properties like traceId, reqStartTime
-    * @param {string} extra.traceId
-    * @param {string} extra.reqStartTime - the time when request initiated in our system
+    * @param {Object} meta - meta contains message properties like traceId, reqStartTime
+    * @param {string} meta.traceId
+    * @param {string} meta.reqStartTime - the time when request initiated in our system
     * @param {boolean} handle=true - handle the effect to
     *
     * @return {Promise}
     */
-    send(qname: string, message: Record<string, unknown>, options: Options.Publish, extra?: Record<string, unknown>, handle?: boolean): Promise<void>;
+    send(qname: string, message: Record<string, unknown>, options: Options.Publish, meta?: Record<string, unknown>, handle?: boolean): Promise<void>;
     /**
     * Get a message from a queue, just get it
     *

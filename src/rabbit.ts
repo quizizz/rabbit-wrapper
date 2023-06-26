@@ -20,8 +20,7 @@ interface SubscribeCallbackArgs {
   replyTo: any;
   rKey: string;
   correlationId: any;
-  traceId: any;
-  reqStartTime: any;
+  meta: any;
   ack: () => void;
   nack: () => void;
 }
@@ -246,15 +245,14 @@ class Rabbit {
   subscribe(qid: string, cb: (args: SubscribeCallbackArgs) => void) {
     const q = this.queues[qid];
     return q.channel.addSetup((ch: ConfirmChannel) => {
-      this.log(`Subscribin to ${qid}`);
+      this.log(`Subscribing to ${qid}`);
       return ch.consume(qid, msg => {
         const message = {
           content: safeJSON(msg.content.toString()),
           replyTo: msg.properties.replyTo,
           rKey: msg.fields.routingKey,
           correlationId: msg.properties.correlationId,
-          traceId: msg.properties.headers.traceId,
-          reqStartTime: msg.properties.headers.reqStartTime,
+          meta: msg.properties.headers,
           ack: () => {
             q.channel.ack(msg);
           },
@@ -317,18 +315,17 @@ class Rabbit {
   * @param {Object} options - the name of the reply queue, correlationId
   * @param {string} options.replyTo - the name of reply queue
   * @param {string} options.correlationId
-  * @param {Object} extra - extra message properties like traceId, reqStartTime
-  * @param {string} extra.traceId
-  * @param {string} extra.reqStartTime - the time when request initiated in our system
+  * @param {Object} meta - meta contains message properties like traceId, reqStartTime
+  * @param {string} meta.traceId
+  * @param {string} meta.reqStartTime - the time when request initiated in our system
   * @param {boolean} handle=true - handle the effect to
   *
   * @return {Promise}
   */
-  send(qname: string, message: Record<string, unknown>, options: Options.Publish, extra: Record<string, unknown> = {}, handle = true) {
+  send(qname: string, message: Record<string, unknown>, options: Options.Publish, meta: Record<string, unknown> = {}, handle = true) {
     options.headers = {
       ...options.headers,
-      traceId: extra.traceId,
-      reqStartTime: extra.reqStartTime
+      ...meta,
     };
 
     const p = this.channel.sendToQueue(qname, message, options);
