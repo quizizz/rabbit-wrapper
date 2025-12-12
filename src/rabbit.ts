@@ -251,6 +251,7 @@ class Rabbit {
           content: safeJSON(msg.content.toString()),
           replyTo: msg.properties.replyTo,
           rKey: msg.fields.routingKey,
+          redelivered: msg.fields.redelivered,
           correlationId: msg.properties.correlationId,
           meta: msg.properties.headers,
           ack: () => {
